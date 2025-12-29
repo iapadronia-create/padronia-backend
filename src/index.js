@@ -1,44 +1,46 @@
-// Carrega variáveis de ambiente do arquivo .env
 require('dotenv').config();
-
-// Importa o framework Express (servidor HTTP em Node)
 const express = require('express');
 
-// Importa o middleware de autenticação (valida token do Supabase)
-const authMiddleware = require('./middleware/auth');
-
-// Importa a rota de geração de documentos (já existente no seu projeto)
+// Rotas
 const generateRoute = require('./routes/generate');
-
-// Importa a rota de webhook (já existente, usada para callbacks externos)
 const webhookRoute = require('./routes/webhook');
-
-// Importa a rota que criamos para completar o perfil e liberar créditos
 const completeProfileRoute = require('./routes/completeProfile');
+const meRoute = require('./routes/me');
 
-// Cria a aplicação Express
-const app = express();
+// Middlewares
+const authMiddleware = require('./middleware/auth');
+const checkCredits = require('./middleware/checkCredits');
 
-// Habilita o parse automático de JSON no corpo das requisições
+const app = express(); // ✅ UMA ÚNICA INSTÂNCIA
+
 app.use(express.json());
 
-// Webhook (não exige login, pois recebe requisições externas)
+// Webhook (pagamentos, eventos externos, etc.)
 app.use('/api/webhook', webhookRoute);
 
-// Onboarding + créditos grátis (não usa authMiddleware, 
-// porque a validação de token é feita dentro da própria rota)
+// Completar perfil / onboarding
 app.use('/api/complete-profile', completeProfileRoute);
 
-// Rota protegida (exige token do Supabase via authMiddleware)
-app.use('/api/generate', authMiddleware, generateRoute);
+// Dados do usuário logado (fonte do frontend)
+app.use('/api/me', authMiddleware, meRoute);
 
-// Rota simples para testar se o servidor está no ar
-app.get('/health', (req, res) => res.send('ok'));
+// Geração de documentos (fluxo protegido)
+app.use(
+  '/api/generate',
+  authMiddleware,
+  checkCredits,
+  generateRoute
+);
 
-// Define a porta do servidor (Railway ou 8080 local)
+// Healthcheck
+app.get('/health', (req, res) => {
+  res.send('ok');
+});
+
 const PORT = process.env.PORT || 8080;
 
-// Inicia o servidor
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
 
 

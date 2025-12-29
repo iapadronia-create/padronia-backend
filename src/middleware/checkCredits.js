@@ -1,29 +1,83 @@
-const pool = require('../db');
+const { createClient } = require('@supabase/supabase-js');
 
-module.exports = async function (req, res, next) {
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// Mapeamento oficial de custo por documento
+const DOCUMENT_COST = {
+  // POPs e Procedimentos
+  pop: 1,
+  procedimento_interno: 1,
+  mbp: 3,
+
+  // Checklists
+  checklist: 1,
+
+  // Documentos Técnicos
+  ficha_tecnica: 1,
+
+  // Relatórios
+  relatorio: 2,
+
+  // Planos
+  plano_acao: 2,
+  plano_higienizacao: 2,
+  plano_controle_pragas: 2,
+  plano_capacitacao: 2,
+  cronograma_limpeza: 1,
+
+  // Treinamentos
+  roteiro_treinamento: 2,
+  certificado_treinamento: 1
+};
+
+module.exports = async function checkCredits(req, res, next) {
   try {
     const userId = req.user.id;
+    const { document_key } = req.body;
 
-    const result = await pool.query(
-      "SELECT credits FROM users WHERE id = $1",
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Usuário não encontrado.' });
+    if (!document_key) {
+      return res.status(400).json({
+        error: 'document_key não informado'
+      });
     }
 
-    const credits = result.rows[0].credits;
+    const cost = DOCUMENT_COST[document_key];
 
-    if (credits <= 0) {
-      return res.status(403).json({ error: 'Créditos insuficientes.' });
+    if (!cost) {
+      return res.status(400).json({
+        error: 'document_key inválido'
+      });
     }
 
-    req.user.credits = credits;
+    const { data: user, error } = await supabase
+      .from('users_extra')
+      .select('credits')
+      .eq('id', userId)
+      .single();
+
+    if (error || !user) {
+      return res.status(403).json({
+        error: 'Usuário sem perfil completo'
+      });
+    }
+
+    if (user.credits < cost) {
+      return res.status(402).json({
+        error: 'Créditos insuficientes'
+      });
+    }
+
+    // Disponibiliza info para o próximo handler
+    req.documentCost = cost;
+    req.documentKey = document_key;
+
     next();
-
   } catch (err) {
-    console.error("Erro ao validar créditos:", err);
-    return res.status(500).json({ error: 'Erro ao validar créditos.' });
+    console.error('ERRO MIDDLEWARE CRÉDITOS:', err);
+    return res.status(500).json({ error: 'Erro interno' });
   }
 };
+

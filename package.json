@@ -2,12 +2,6 @@
   "name": "padronia-backend",
   "version": "1.0.0",
   "description": "Backend do PadronIA usando Node.js, Express e Supabase",
-  "main": "src/index.js",
-  "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "keywords": [
     "padronia",
     "backend",
@@ -15,14 +9,17 @@
     "express",
     "supabase"
   ],
-  "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.86.0",
     "dotenv": "^17.2.3",
-    "express": "^5.0.1",
-    "node-fetch": "^3.3.2",
+    "express": "^4.19.2",
     "pg": "^8.16.3"
   },
   "devDependencies": {
