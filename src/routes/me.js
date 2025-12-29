@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 
+// Cliente admin apenas para acesso ao banco (SERVICE ROLE)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -10,15 +11,11 @@ const supabase = createClient(
 
 router.get('/', async (req, res) => {
   try {
+    // Usuário já validado pelo middleware
     const userId = req.user.id;
+    const email = req.user.email;
 
-    const { data: authUser, error: authError } =
-      await supabase.auth.admin.getUserById(userId);
-
-    if (authError || !authUser) {
-      return res.status(401).json({ error: 'Usuário inválido' });
-    }
-
+    // Buscar perfil + créditos
     const { data: profile, error: profileError } = await supabase
       .from('users_extra')
       .select(`
@@ -37,10 +34,12 @@ router.get('/', async (req, res) => {
       return res.status(404).json({ error: 'Perfil não encontrado' });
     }
 
+    // Definir limite conforme plano
     let planCreditsLimit = 0;
     if (profile.plan_type === 'monthly') planCreditsLimit = 150;
     if (profile.plan_type === 'annual') planCreditsLimit = 250;
 
+    // Verificar reset mensal
     let shouldReset = false;
 
     if (profile.plan_type !== 'free' && profile.plan_started_at) {
@@ -70,21 +69,27 @@ router.get('/', async (req, res) => {
       profile.plan_started_at = nowIso;
     }
 
+    // RESPOSTA FINAL COM MARCADOR DE PRODUÇÃO
     return res.json({
+      __PRODUCAO_OK__: 'VERSAO_2025_12_28_RAILWAY',
+
       user: {
         id: userId,
-        email: authUser.user.email
+        email: email
       },
+
       profile: {
         area_atuacao: profile.area_atuacao,
         segmento: profile.segmento,
         objetivo: profile.objetivo
       },
+
       plan: {
         type: profile.plan_type,
         credits_base_limit: planCreditsLimit,
         last_reset: profile.plan_started_at
       },
+
       credits: {
         base: profile.credits_base,
         extra: profile.credits_extra
@@ -98,4 +103,5 @@ router.get('/', async (req, res) => {
 });
 
 module.exports = router;
+
 
