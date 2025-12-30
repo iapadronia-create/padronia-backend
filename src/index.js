@@ -1,12 +1,4 @@
 require('dotenv').config();
-
-console.log(
-  'BOOT SERVICE ROLE PREFIX:',
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? process.env.SUPABASE_SERVICE_ROLE_KEY.slice(0, 10)
-    : 'UNDEFINED'
-);
-
 const express = require('express');
 
 // Rotas
@@ -23,10 +15,15 @@ const app = express();
 
 app.use(express.json());
 
+// Rota raiz (necessária para healthcheck do Railway)
+app.get('/', (req, res) => {
+  res.send('ok');
+});
+
 // Webhook (pagamentos, eventos externos, etc.)
 app.use('/api/webhook', webhookRoute);
 
-// ✅ AGORA PROTEGIDO
+// Completar perfil (protegida)
 app.use('/api/complete-profile', authMiddleware, completeProfileRoute);
 
 // Dados do usuário logado
@@ -40,8 +37,8 @@ app.use(
   generateRoute
 );
 
-// Healthcheck
-app.get('/', (req, res) => {
+// Healthcheck explícito (opcional, mas útil)
+app.get('/health', (req, res) => {
   res.send('ok');
 });
 

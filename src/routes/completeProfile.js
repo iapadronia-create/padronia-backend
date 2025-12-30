@@ -3,19 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 
-/**
- * 🔴 LOG DE PROVA DE ENV (TEMPORÁRIO)
- * Isso serve APENAS para confirmar que o Railway
- * está injetando a SERVICE ROLE corretamente.
- */
-console.log(
-  'SERVICE ROLE PREFIX:',
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? process.env.SUPABASE_SERVICE_ROLE_KEY.slice(0, 10)
-    : 'UNDEFINED'
-);
-
-// Cliente Supabase (backend only)
+// Cliente Supabase usando SERVICE ROLE (apenas backend)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -23,15 +11,19 @@ const supabase = createClient(
 
 router.post('/', async (req, res) => {
   try {
+    // Usuário validado pelo authMiddleware
     const userId = req.user.id;
+
     const { area_atuacao, segmento, objetivo } = req.body;
 
+    // Validação básica
     if (!area_atuacao || !segmento || !objetivo) {
       return res.status(400).json({
         error: 'Campos obrigatórios não informados'
       });
     }
 
+    // INSERT explícito com onConflict (mais previsível que upsert)
     const { error } = await supabase
       .from('users_extra')
       .insert(
@@ -45,13 +37,7 @@ router.post('/', async (req, res) => {
       );
 
     if (error) {
-      console.error('SUPABASE ERROR FULL >>>', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-
+      console.error('Erro ao salvar perfil:', error);
       return res.status(500).json({
         error: 'Erro ao salvar perfil'
       });
@@ -63,7 +49,7 @@ router.post('/', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('ERRO JS PURO >>>', err);
+    console.error('Erro interno completeProfile:', err);
     return res.status(500).json({
       error: 'Erro interno'
     });
