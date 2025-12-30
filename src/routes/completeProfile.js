@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 
+// Cliente admin apenas para banco
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -10,47 +11,33 @@ const supabase = createClient(
 
 router.post('/', async (req, res) => {
   try {
-    // 1. Validar token
-    const authHeader = req.headers.authorization;
+    // Usuário já validado pelo authMiddleware
+    const userId = req.user.id;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token não informado' });
-    }
-
-    const accessToken = authHeader.replace('Bearer ', '');
-    const { data: authData, error: authError } =
-      await supabase.auth.getUser(accessToken);
-
-    if (authError || !authData?.user) {
-      return res.status(401).json({ error: 'Token inválido' });
-    }
-
-    const userId = authData.user.id;
-
-    // 2. Dados do perfil
+    // Dados do perfil
     const { area_atuacao, segmento, objetivo, device_id } = req.body;
 
-    // 3. Buscar registro existente
-    const { data: existing, error: selectError } = await supabase
+    if (!area_atuacao || !segmento || !objetivo) {
+      return res.status(400).json({ error: 'Dados obrigatórios ausentes' });
+    }
+
+    // Buscar registro existente
+    const { data: existing } = await supabase
       .from('users_extra')
-      .select('*')
+      .select('credits_extra, free_bonus_claimed')
       .eq('id', userId)
       .single();
 
-    if (selectError && selectError.code !== 'PGRST116') {
-      throw selectError;
-    }
-
-    // 4. Créditos
-    let credits = existing?.credits ?? 0;
+    let creditsExtra = existing?.credits_extra ?? 0;
     let freeBonusClaimed = existing?.free_bonus_claimed ?? false;
 
+    // Bônus de onboarding (apenas uma vez)
     if (!freeBonusClaimed) {
-      credits += 2;
+      creditsExtra += 2;
       freeBonusClaimed = true;
     }
 
-    // 5. Upsert
+    // Upsert do perfil
     const { error: upsertError } = await supabase
       .from('users_extra')
       .upsert({
@@ -59,7 +46,7 @@ router.post('/', async (req, res) => {
         segmento,
         objetivo,
         device_id,
-        credits,
+        credits_extra: creditsExtra,
         free_bonus_claimed: freeBonusClaimed
       });
 
@@ -67,10 +54,9 @@ router.post('/', async (req, res) => {
       throw upsertError;
     }
 
-    // 6. Resposta
     return res.json({
       success: true,
-      credits
+      credits_extra: creditsExtra
     });
 
   } catch (err) {
@@ -80,5 +66,6 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
+
 
 
