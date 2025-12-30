@@ -15,18 +15,18 @@ const app = express();
 
 app.use(express.json());
 
-// Rota raiz (necessária para healthcheck do Railway)
+// Healthcheck / raiz (Railway)
 app.get('/', (req, res) => {
   res.send('ok');
 });
 
-// Webhook (pagamentos, eventos externos, etc.)
+// Webhook
 app.use('/api/webhook', webhookRoute);
 
-// Completar perfil (protegida)
+// Completar perfil
 app.use('/api/complete-profile', authMiddleware, completeProfileRoute);
 
-// Dados do usuário logado
+// Dados do usuário
 app.use('/api/me', authMiddleware, meRoute);
 
 // Geração de documentos
@@ -37,7 +37,7 @@ app.use(
   generateRoute
 );
 
-// Healthcheck explícito (opcional, mas útil)
+// Health explícito
 app.get('/health', (req, res) => {
   res.send('ok');
 });
