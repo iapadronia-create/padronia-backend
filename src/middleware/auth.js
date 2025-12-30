@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-// Cliente APENAS para validar token (usa ANON KEY)
+// Cliente apenas para validação de token (ANON KEY)
 const supabaseAuth = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
@@ -17,14 +17,18 @@ module.exports = async function authMiddleware(req, res, next) {
 
     const accessToken = authHeader.replace('Bearer ', '');
 
+    // Valida token
     const { data, error } = await supabaseAuth.auth.getUser(accessToken);
 
-    if (error || !data?.user) {
+    if (error || !data || !data.user) {
       return res.status(401).json({ error: 'Token inválido.' });
     }
 
-    // usuário autenticado disponível para toda a API
-    req.user = data.user;
+    // GARANTIA: sempre teremos o ID
+    req.user = {
+      id: data.user.id,
+      email: data.user.email
+    };
 
     next();
   } catch (err) {
@@ -32,4 +36,5 @@ module.exports = async function authMiddleware(req, res, next) {
     return res.status(500).json({ error: 'Erro interno na autenticação.' });
   }
 };
+
 

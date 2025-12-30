@@ -1,4 +1,12 @@
 require('dotenv').config();
+
+console.log(
+  'BOOT SERVICE ROLE PREFIX:',
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? process.env.SUPABASE_SERVICE_ROLE_KEY.slice(0, 10)
+    : 'UNDEFINED'
+);
+
 const express = require('express');
 
 // Rotas
