@@ -11,21 +11,58 @@ router.post('/', async (req, res) => {
       return res.status(401).json({ error: 'Token não informado' });
     }
 
-    // Cria client Supabase com ANON KEY
     const supabase = createClient(
       process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
+      process.env.SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: {
+            Authorization: authHeader
+          }
+        }
+      }
     );
-
-    // 🔑 Injeta explicitamente o token do usuário
-    const token = authHeader.replace('Bearer ', '');
-    await supabase.auth.setSession({
-      access_token: token,
-      refresh_token: token
-    });
 
     const userId = req.user.id;
 
     const { area_atuacao, segmento, objetivo } = req.body;
 
-    if (!area_atuacao || !segmento || !o_
+    if (!area_atuacao || !segmento || !objetivo) {
+      return res.status(400).json({
+        error: 'Campos obrigatórios não informados'
+      });
+    }
+
+    const { error } = await supabase
+      .from('users_extra')
+      .upsert(
+        {
+          id: userId,
+          area_atuacao,
+          segmento,
+          objetivo
+        },
+        { onConflict: 'id' }
+      );
+
+    if (error) {
+      console.error('Erro Supabase:', error);
+      return res.status(500).json({
+        error: 'Erro ao salvar perfil'
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Perfil salvo com sucesso'
+    });
+
+  } catch (err) {
+    console.error('Erro interno:', err);
+    return res.status(500).json({
+      error: 'Erro interno'
+    });
+  }
+});
+
+module.exports = router;
