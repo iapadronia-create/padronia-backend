@@ -46,11 +46,19 @@ router.post('/', async (req, res) => {
       );
 
     if (error) {
-      console.error('Erro Supabase:', error);
-      return res.status(500).json({
-        error: 'Erro ao salvar perfil'
-      });
+  console.error('SUPABASE ERROR >>>', error);
+
+  return res.status(500).json({
+    error: 'Erro ao salvar perfil',
+    supabase: {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code
     }
+  });
+}
+
 
     return res.json({
       success: true,
