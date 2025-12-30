@@ -22,35 +22,24 @@ router.post('/', async (req, res) => {
       });
     }
 
-    /**
-     * Estratégia SIMPLES e ROBUSTA:
-     * - tenta criar o perfil
-     * - se já existir, apenas atualiza os dados
-     * - bônus só é aplicado na primeira criação
-     */
-
+    // Upsert MINIMALISTA (somente colunas confirmadas)
     const { error } = await supabase
       .from('users_extra')
       .upsert({
         id: userId,
         area_atuacao,
         segmento,
-        objetivo,
-        credits_extra: 2,
-        free_bonus_claimed: true
-      }, {
-        onConflict: 'id',
-        ignoreDuplicates: false
+        objetivo
       });
 
     if (error) {
-      console.error('ERRO UPSERT users_extra:', error);
+      console.error('ERRO SUPABASE UPSERT:', error);
       return res.status(500).json({ error: 'Erro ao salvar perfil' });
     }
 
     return res.json({
       success: true,
-      message: 'Perfil criado/atualizado com sucesso'
+      message: 'Perfil salvo com sucesso'
     });
 
   } catch (err) {
@@ -60,5 +49,6 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
+
 
 
