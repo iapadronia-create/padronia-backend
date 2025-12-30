@@ -3,7 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 
-// Cliente admin apenas para banco
+// Cliente admin (SERVICE ROLE) apenas para banco
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -11,52 +11,46 @@ const supabase = createClient(
 
 router.post('/', async (req, res) => {
   try {
-    // Usuário já validado pelo authMiddleware
+    // authMiddleware já garantiu isso
     const userId = req.user.id;
 
-    // Dados do perfil
-    const { area_atuacao, segmento, objetivo, device_id } = req.body;
+    const { area_atuacao, segmento, objetivo } = req.body;
 
     if (!area_atuacao || !segmento || !objetivo) {
-      return res.status(400).json({ error: 'Dados obrigatórios ausentes' });
+      return res.status(400).json({
+        error: 'Campos obrigatórios não informados'
+      });
     }
 
-    // Buscar registro existente
-    const { data: existing } = await supabase
-      .from('users_extra')
-      .select('credits_extra, free_bonus_claimed')
-      .eq('id', userId)
-      .single();
+    /**
+     * Estratégia SIMPLES e ROBUSTA:
+     * - tenta criar o perfil
+     * - se já existir, apenas atualiza os dados
+     * - bônus só é aplicado na primeira criação
+     */
 
-    let creditsExtra = existing?.credits_extra ?? 0;
-    let freeBonusClaimed = existing?.free_bonus_claimed ?? false;
-
-    // Bônus de onboarding (apenas uma vez)
-    if (!freeBonusClaimed) {
-      creditsExtra += 2;
-      freeBonusClaimed = true;
-    }
-
-    // Upsert do perfil
-    const { error: upsertError } = await supabase
+    const { error } = await supabase
       .from('users_extra')
       .upsert({
         id: userId,
         area_atuacao,
         segmento,
         objetivo,
-        device_id,
-        credits_extra: creditsExtra,
-        free_bonus_claimed: freeBonusClaimed
+        credits_extra: 2,
+        free_bonus_claimed: true
+      }, {
+        onConflict: 'id',
+        ignoreDuplicates: false
       });
 
-    if (upsertError) {
-      throw upsertError;
+    if (error) {
+      console.error('ERRO UPSERT users_extra:', error);
+      return res.status(500).json({ error: 'Erro ao salvar perfil' });
     }
 
     return res.json({
       success: true,
-      credits_extra: creditsExtra
+      message: 'Perfil criado/atualizado com sucesso'
     });
 
   } catch (err) {
@@ -66,6 +60,5 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
-
 
 
