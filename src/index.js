@@ -11,20 +11,20 @@ const meRoute = require('./routes/me');
 const authMiddleware = require('./middleware/auth');
 const checkCredits = require('./middleware/checkCredits');
 
-const app = express(); // ✅ UMA ÚNICA INSTÂNCIA
+const app = express();
 
 app.use(express.json());
 
 // Webhook (pagamentos, eventos externos, etc.)
 app.use('/api/webhook', webhookRoute);
 
-// Completar perfil / onboarding
-app.use('/api/complete-profile', completeProfileRoute);
+// ✅ AGORA PROTEGIDO
+app.use('/api/complete-profile', authMiddleware, completeProfileRoute);
 
-// Dados do usuário logado (fonte do frontend)
+// Dados do usuário logado
 app.use('/api/me', authMiddleware, meRoute);
 
-// Geração de documentos (fluxo protegido)
+// Geração de documentos
 app.use(
   '/api/generate',
   authMiddleware,
@@ -42,5 +42,3 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
-
-
