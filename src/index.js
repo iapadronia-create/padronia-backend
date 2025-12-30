@@ -15,7 +15,7 @@ const app = express();
 
 app.use(express.json());
 
-// Healthcheck / raiz (Railway)
+// Healthcheck raiz (Railway)
 app.get('/', (req, res) => {
   res.send('ok');
 });
