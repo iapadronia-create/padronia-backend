@@ -1,147 +1,168 @@
-const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
-
+const express = require("express");
 const router = express.Router();
+const { createClient } = require("@supabase/supabase-js");
 
+// ==============================
+// Supabase (service role)
+// ==============================
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Créditos por tipo de documento (V1 TRAVADO)
-const CREDIT_COST = {
-  POP: 2,
-  CHECKLIST: 1,
-  FICHA_TECNICA: 1
-};
-
-// Geração MOCK (V1) — depois entra IA / N8N
-function generateMockDocument(type, description) {
-  return `
-DOCUMENTO: ${type}
-
-Descrição solicitada:
-${description}
-
-Conteúdo gerado automaticamente pela PadronIA (versão inicial).
-
-Este documento deve ser revisado pelo responsável técnico antes do uso.
-`;
-}
-
-router.post('/', async (req, res) => {
+// ==============================
+// POST /api/generate
+// ==============================
+router.post("/generate", async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { document_type, description } = req.body;
+    // --------------------------------
+    // 1. AUTH — token do usuário
+    // --------------------------------
+    const authHeader = req.headers.authorization;
 
-    // Validação básica
-    if (!document_type || !description) {
-      return res.status(400).json({
-        error: 'INVALID_REQUEST',
-        message: 'Informe o tipo de documento e a descrição.'
-      });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Token não informado." });
     }
 
-    if (!CREDIT_COST[document_type]) {
-      return res.status(400).json({
-        error: 'INVALID_DOCUMENT_TYPE',
-        message: 'Tipo de documento não suportado nesta versão.'
-      });
+    const token = authHeader.replace("Bearer ", "").trim();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return res.status(401).json({ error: "Token inválido." });
     }
 
-    // Buscar dados do usuário
-    const { data: userExtra, error: userError } = await supabase
-      .from('users_extra')
-      .select('plan_type, credits_base, credits_extra')
-      .eq('id', userId)
+    const userId = user.id;
+
+    // --------------------------------
+    // 2. BODY — leitura CORRETA
+    // --------------------------------
+    const { document_key, description, extra_context } = req.body;
+
+    if (!document_key) {
+      return res
+        .status(400)
+        .json({ error: "document_key não informado" });
+    }
+
+    if (!description) {
+      return res
+        .status(400)
+        .json({ error: "description não informada" });
+    }
+
+    // --------------------------------
+    // 3. Buscar créditos do usuário
+    // --------------------------------
+    const { data: profile, error: profileError } = await supabase
+      .from("users_extra")
+      .select("credits_base, credits_extra")
+      .eq("id", userId)
       .single();
 
-    if (userError || !userExtra) {
-      return res.status(500).json({
-        error: 'USER_NOT_FOUND',
-        message: 'Não foi possível identificar os dados do usuário.'
-      });
+    if (profileError || !profile) {
+      return res
+        .status(500)
+        .json({ error: "Erro ao carregar créditos do usuário." });
     }
 
-    const creditsAvailable =
-      (userExtra.credits_base || 0) + (userExtra.credits_extra || 0);
+    let { credits_base, credits_extra } = profile;
 
-    const creditsRequired = CREDIT_COST[document_type];
+    const TOTAL_CREDITS = credits_base + credits_extra;
 
-    // 🚨 SEM CRÉDITOS — CENÁRIOS ESTRATÉGICOS
-    if (creditsAvailable < creditsRequired) {
-      // FREE
-      if (userExtra.plan_type === 'free') {
-        return res.status(402).json({
-          error: 'NO_CREDITS_FREE',
-          title: 'Seus créditos gratuitos chegaram ao fim',
-          message:
-            'Você usou os créditos iniciais da PadronIA para testar a geração de documentos. Para continuar criando POPs, Checklists e Fichas Técnicas dentro de um limite mensal de créditos, você pode fazer upgrade para o plano mensal.',
-          cta: {
-            type: 'UPGRADE',
-            label: 'Fazer upgrade'
-          }
-        });
-      }
-
-      // ASSINANTE
+    if (TOTAL_CREDITS <= 0) {
       return res.status(402).json({
-        error: 'NO_CREDITS_SUBSCRIBER',
-        title: 'Seus créditos deste mês foram utilizados',
-        message:
-          'Parece que você já usou todos os créditos disponíveis neste ciclo. Se precisar gerar mais documentos agora, você pode adicionar créditos extras ou aguardar a renovação mensal.',
-        cta: {
-          type: 'BUY_CREDITS',
-          label: 'Adicionar créditos'
-        }
+        error: "Créditos insuficientes",
+        code: "NO_CREDITS",
       });
     }
 
-    // 🧮 DÉBITO DE CRÉDITO (prioriza base, depois extra)
-    let newCreditsBase = userExtra.credits_base;
-    let newCreditsExtra = userExtra.credits_extra;
-    let remaining = creditsRequired;
+    // --------------------------------
+    // 4. Definição de custo por documento (V1)
+    // --------------------------------
+    const DOCUMENT_COSTS = {
+      pop_higienizacao: 2,
+      pop_padrao: 2,
+      checklist_bpf: 1,
+      ficha_tecnica: 1,
+      relatorio_nc: 2,
+    };
 
-    if (newCreditsBase >= remaining) {
-      newCreditsBase -= remaining;
-      remaining = 0;
+    const cost = DOCUMENT_COSTS[document_key];
+
+    if (!cost) {
+      return res.status(400).json({
+        error: "document_key inválido ou não suportado",
+      });
+    }
+
+    if (TOTAL_CREDITS < cost) {
+      return res.status(402).json({
+        error: "Créditos insuficientes para este documento",
+        required: cost,
+        available: TOTAL_CREDITS,
+      });
+    }
+
+    // --------------------------------
+    // 5. Consumir créditos
+    // prioridade: base → extra
+    // --------------------------------
+    let newBase = credits_base;
+    let newExtra = credits_extra;
+
+    if (credits_base >= cost) {
+      newBase -= cost;
     } else {
-      remaining -= newCreditsBase;
-      newCreditsBase = 0;
-      newCreditsExtra -= remaining;
+      const remaining = cost - credits_base;
+      newBase = 0;
+      newExtra -= remaining;
     }
 
-    // Atualiza créditos
-    const { error: updateError } = await supabase
-      .from('users_extra')
+    const { error: updateCreditsError } = await supabase
+      .from("users_extra")
       .update({
-        credits_base: newCreditsBase,
-        credits_extra: newCreditsExtra
+        credits_base: newBase,
+        credits_extra: newExtra,
       })
-      .eq('id', userId);
+      .eq("id", userId);
 
-    if (updateError) {
-      return res.status(500).json({
-        error: 'CREDIT_UPDATE_FAILED',
-        message: 'Não foi possível atualizar os créditos.'
-      });
+    if (updateCreditsError) {
+      return res
+        .status(500)
+        .json({ error: "Erro ao atualizar créditos." });
     }
 
-    // 📄 GERA DOCUMENTO (mock)
-    const content = generateMockDocument(document_type, description);
+    // --------------------------------
+    // 6. Geração do documento (V1 stub)
+    // --------------------------------
+    // Aqui depois entra N8N + OpenAI
+    const generatedDocument = {
+      title: document_key,
+      content: `Documento gerado para: ${description}`,
+    };
 
-    return res.json({
+    // --------------------------------
+    // 7. Resposta final
+    // --------------------------------
+    return res.status(200).json({
       success: true,
-      document_type,
-      credits_used: creditsRequired,
-      credits_remaining: newCreditsBase + newCreditsExtra,
-      content
+      document_key,
+      cost,
+      credits_remaining: {
+        base: newBase,
+        extra: newExtra,
+        total: newBase + newExtra,
+      },
+      document: generatedDocument,
     });
   } catch (err) {
-    console.error('ERRO /api/generate >>>', err);
+    console.error("Erro em /api/generate:", err);
     return res.status(500).json({
-      error: 'INTERNAL_ERROR',
-      message: 'Erro interno ao gerar documento.'
+      error: "Erro interno ao gerar documento",
     });
   }
 });
