@@ -1,48 +1,43 @@
-require('dotenv').config();
-const express = require('express');
+require("dotenv").config();
 
-// Rotas
-const generateRoute = require('./routes/generate');
-const webhookRoute = require('./routes/webhook');
-const completeProfileRoute = require('./routes/completeProfile');
-const meRoute = require('./routes/me');
-
-// Middlewares
-const authMiddleware = require('./middleware/auth');
-const checkCredits = require('./middleware/checkCredits');
+const express = require("express");
+const cors = require("cors");
 
 const app = express();
 
+// ==============================
+// MIDDLEWARES OBRIGATÓRIOS
+// ==============================
+app.use(cors());
+
+// ISSO É O QUE ESTAVA FALTANDO
 app.use(express.json());
 
-// Healthcheck raiz (Railway)
-app.get('/', (req, res) => {
-  res.send('ok');
+// (opcional, mas seguro)
+app.use(express.urlencoded({ extended: true }));
+
+// ==============================
+// ROTAS
+// ==============================
+const generateRoute = require("./routes/generate");
+const meRoute = require("./routes/me");
+const completeProfileRoute = require("./routes/completeProfile");
+
+app.use("/api", generateRoute);
+app.use("/api", meRoute);
+app.use("/api", completeProfileRoute);
+
+// ==============================
+// HEALTH CHECK
+// ==============================
+app.get("/", (req, res) => {
+  res.send("PadronIA Backend OK");
 });
 
-// Webhook
-app.use('/api/webhook', webhookRoute);
-
-// Completar perfil
-app.use('/api/complete-profile', authMiddleware, completeProfileRoute);
-
-// Dados do usuário
-app.use('/api/me', authMiddleware, meRoute);
-
-// Geração de documentos
-app.use(
-  '/api/generate',
-  authMiddleware,
-  checkCredits,
-  generateRoute
-);
-
-// Health explícito
-app.get('/health', (req, res) => {
-  res.send('ok');
-});
-
-const PORT = process.env.PORT || 8080;
+// ==============================
+// START SERVER
+// ==============================
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
