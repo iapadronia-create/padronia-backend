@@ -1,6 +1,6 @@
+const axios = require("axios");
 const express = require("express");
 const router = express.Router();
-const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
 
 // ==============================
@@ -39,20 +39,20 @@ router.post("/generate", async (req, res) => {
     const userId = user.id;
 
     // --------------------------------
-    // 2. BODY — leitura correta
+    // 2. BODY
     // --------------------------------
     const { document_key, description, extra_context } = req.body;
 
     if (!document_key) {
-      return res.status(400).json({ error: "document_key não informado." });
+      return res.status(400).json({ error: "document_key não informado" });
     }
 
     if (!description) {
-      return res.status(400).json({ error: "description não informada." });
+      return res.status(400).json({ error: "description não informada" });
     }
 
     // --------------------------------
-    // 3. Buscar créditos do usuário
+    // 3. Buscar créditos
     // --------------------------------
     const { data: profile, error: profileError } = await supabase
       .from("users_extra")
@@ -77,7 +77,7 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-    // 4. Custo por documento (V1)
+    // 4. Custo por documento
     // --------------------------------
     const DOCUMENT_COSTS = {
       pop_higienizacao: 2,
@@ -104,7 +104,7 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-    // 5. Consumir créditos (base → extra)
+    // 5. Consumir créditos
     // --------------------------------
     let newBase = credits_base;
     let newExtra = credits_extra;
@@ -132,50 +132,55 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-// 6. Geração do documento (N8N)
-// --------------------------------
-let generatedText;
+    // 6. CHAMADA AO N8N (AQUI ESTÁ O PONTO CRÍTICO)
+    // --------------------------------
+    let generatedText;
 
-try {
-  const n8nResponse = await axios.post(
-    process.env.N8N_GENERATE_URL,
-    {
-      document_key,
-      description,
-      extra_context,
-      user_id: userId,
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      timeout: 120000,
+    try {
+      const n8nResponse = await axios.post(
+        process.env.N8N_GENERATE_URL,
+        {
+          document_key,
+          description,
+          extra_context,
+          user_id: userId,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 120000,
+        }
+      );
+
+      const data = n8nResponse.data;
+
+      generatedText =
+        data?.output?.[0]?.content?.[0]?.text;
+
+      if (!generatedText) {
+        return res.status(502).json({
+          error: "Resposta inválida do serviço de geração (n8n)",
+          raw: data,
+        });
+      }
+    } catch (err) {
+      console.error("Erro ao chamar n8n:", err?.response?.data || err.message);
+      return res.status(502).json({
+        error: "Erro ao gerar documento via n8n",
+      });
     }
-  );
-
-  const data = n8nResponse.data;
-
-  // 🔴 EXTRAÇÃO CORRETA
-  generatedText =
-    data?.output?.[0]?.content?.[0]?.text;
-
-  if (!generatedText) {
-    return res.status(502).json({
-      error: "Resposta inválida do serviço de geração (n8n)",
-      raw: data,
-    });
-  }
-} catch (err) {
-  console.error("Erro ao chamar n8n:", err?.response?.data || err.message);
-
-  return res.status(502).json({
-    error: "Erro ao gerar documento via n8n",
-  });
-}
-
 
     // --------------------------------
-    // 7. Resposta final
+    // 7. DOCUMENTO FINAL (AQUI VAI O TRECHO QUE VOCÊ PERGUNTOU)
+    // --------------------------------
+    const generatedDocument = {
+      title: document_key,
+      content: generatedText,
+    };
+
+    // --------------------------------
+    // 8. RESPOSTA FINAL
     // --------------------------------
     return res.status(200).json({
       success: true,
@@ -189,7 +194,7 @@ try {
       document: generatedDocument,
     });
   } catch (err) {
-    console.error("Erro em /api/generate:", err?.response?.data || err);
+    console.error("Erro em /api/generate:", err);
     return res.status(500).json({
       error: "Erro interno ao gerar documento",
     });
