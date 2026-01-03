@@ -12,6 +12,13 @@ const supabase = createClient(
 );
 
 // ==============================
+// CONFIG N8N
+// ==============================
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
+// exemplo esperado:
+// https://webhook.padronia.com/webhook/padronia/generate
+
+// ==============================
 // POST /api/generate
 // ==============================
 router.post("/generate", async (req, res) => {
@@ -132,67 +139,77 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-    // 6. CHAMADA AO N8N (AQUI ESTÁ O PONTO CRÍTICO)
-    // --------------------------------
-    let generatedText;
+// 6. CHAMADA AO N8N (PONTO CRÍTICO)
+// --------------------------------
+let n8nResponse;
 
-    try {
-      const n8nResponse = await axios.post(
-        process.env.N8N_GENERATE_URL,
-        {
-          document_key,
-          description,
-          extra_context,
-          user_id: userId,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 120000,
-        }
-      );
-
-      const data = n8nResponse.data;
-
-      generatedText =
-        data?.output?.[0]?.content?.[0]?.text;
-
-      if (!generatedText) {
-        return res.status(502).json({
-          error: "Resposta inválida do serviço de geração (n8n)",
-          raw: data,
-        });
-      }
-    } catch (err) {
-      console.error("Erro ao chamar n8n:", err?.response?.data || err.message);
-      return res.status(502).json({
-        error: "Erro ao gerar documento via n8n",
-      });
-    }
-
-    // --------------------------------
-    // 7. DOCUMENTO FINAL (AQUI VAI O TRECHO QUE VOCÊ PERGUNTOU)
-    // --------------------------------
-    const generatedDocument = {
-      title: document_key,
-      content: generatedText,
-    };
-
-    // --------------------------------
-    // 8. RESPOSTA FINAL
-    // --------------------------------
-    return res.status(200).json({
-      success: true,
+try {
+  n8nResponse = await axios.post(
+    process.env.N8N_WEBHOOK_URL,
+    {
       document_key,
-      cost,
-      credits_remaining: {
-        base: newBase,
-        extra: newExtra,
-        total: newBase + newExtra,
+      description,
+      extra_context,
+      user_id: userId,
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
       },
-      document: generatedDocument,
-    });
+      timeout: 60000,
+    }
+  );
+
+
+} catch (err) {
+  console.error(
+    "Erro ao chamar n8n:",
+    err.response?.data || err.message
+  );
+
+  return res.status(502).json({
+    error: "Erro ao gerar documento via n8n",
+    details: err.response?.data || err.message,
+  });
+}
+
+// --------------------------------
+// 7. EXTRAÇÃO DO TEXTO GERADO
+// --------------------------------
+const raw = n8nResponse.data;
+
+const text = raw?.output?.[0]?.content?.[0]?.text;
+
+if (!text) {
+  return res.status(502).json({
+    error: "Resposta inválida do serviço de geração (n8n)",
+    raw,
+  });
+}
+
+// --------------------------------
+// 8. DOCUMENTO FINAL
+// --------------------------------
+const generatedDocument = {
+  title: document_key,
+  content: text,
+};
+
+// --------------------------------
+// 9. RESPOSTA FINAL
+// --------------------------------
+return res.status(200).json({
+  success: true,
+  document_key,
+  cost,
+  credits_remaining: {
+    base: newBase,
+    extra: newExtra,
+    total: newBase + newExtra,
+  },
+  document: generatedDocument,
+});
+
   } catch (err) {
     console.error("Erro em /api/generate:", err);
     return res.status(500).json({
