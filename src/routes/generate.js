@@ -132,35 +132,47 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-    // 6. Geração REAL via N8N
-    // --------------------------------
-    const n8nResponse = await axios.post(
-      process.env.N8N_WEBHOOK_URL,
-      {
-        document_key,
-        description,
-        extra_context,
+// 6. Geração do documento (N8N)
+// --------------------------------
+let generatedText;
+
+try {
+  const n8nResponse = await axios.post(
+    process.env.N8N_GENERATE_URL,
+    {
+      document_key,
+      description,
+      extra_context,
+      user_id: userId,
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
       },
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        timeout: 120000,
-      }
-    );
-
-    // Esperado: { text: "conteúdo gerado pela IA" }
-    const generatedDocument = n8nResponse.data;
-
-    if (
-      !generatedDocument ||
-      typeof generatedDocument.text !== "string"
-    ) {
-      return res.status(500).json({
-        error: "Resposta inválida do serviço de geração (n8n).",
-        raw: generatedDocument,
-      });
+      timeout: 120000,
     }
+  );
+
+  const data = n8nResponse.data;
+
+  // 🔴 EXTRAÇÃO CORRETA
+  generatedText =
+    data?.output?.[0]?.content?.[0]?.text;
+
+  if (!generatedText) {
+    return res.status(502).json({
+      error: "Resposta inválida do serviço de geração (n8n)",
+      raw: data,
+    });
+  }
+} catch (err) {
+  console.error("Erro ao chamar n8n:", err?.response?.data || err.message);
+
+  return res.status(502).json({
+    error: "Erro ao gerar documento via n8n",
+  });
+}
+
 
     // --------------------------------
     // 7. Resposta final
