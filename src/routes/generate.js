@@ -154,8 +154,9 @@ try {
     },
     {
       headers: {
-        "Content-Type": "application/json",
-      },
+  "Content-Type": "application/json",
+  "x-padronia-secret": process.env.N8N_SECRET,
+    },
       timeout: 60000,
     }
   );
