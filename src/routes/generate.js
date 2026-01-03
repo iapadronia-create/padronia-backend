@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
 
 // ==============================
@@ -38,20 +39,16 @@ router.post("/generate", async (req, res) => {
     const userId = user.id;
 
     // --------------------------------
-    // 2. BODY — leitura CORRETA
+    // 2. BODY — leitura correta
     // --------------------------------
     const { document_key, description, extra_context } = req.body;
 
     if (!document_key) {
-      return res
-        .status(400)
-        .json({ error: "document_key não informado" });
+      return res.status(400).json({ error: "document_key não informado." });
     }
 
     if (!description) {
-      return res
-        .status(400)
-        .json({ error: "description não informada" });
+      return res.status(400).json({ error: "description não informada." });
     }
 
     // --------------------------------
@@ -70,7 +67,6 @@ router.post("/generate", async (req, res) => {
     }
 
     let { credits_base, credits_extra } = profile;
-
     const TOTAL_CREDITS = credits_base + credits_extra;
 
     if (TOTAL_CREDITS <= 0) {
@@ -81,7 +77,7 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-    // 4. Definição de custo por documento (V1)
+    // 4. Custo por documento (V1)
     // --------------------------------
     const DOCUMENT_COSTS = {
       pop_higienizacao: 2,
@@ -108,8 +104,7 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-    // 5. Consumir créditos
-    // prioridade: base → extra
+    // 5. Consumir créditos (base → extra)
     // --------------------------------
     let newBase = credits_base;
     let newExtra = credits_extra;
@@ -137,13 +132,35 @@ router.post("/generate", async (req, res) => {
     }
 
     // --------------------------------
-    // 6. Geração do documento (V1 stub)
+    // 6. Geração REAL via N8N
     // --------------------------------
-    // Aqui depois entra N8N + OpenAI
-    const generatedDocument = {
-      title: document_key,
-      content: `Documento gerado para: ${description}`,
-    };
+    const n8nResponse = await axios.post(
+      process.env.N8N_WEBHOOK_URL,
+      {
+        document_key,
+        description,
+        extra_context,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 120000,
+      }
+    );
+
+    // Esperado: { text: "conteúdo gerado pela IA" }
+    const generatedDocument = n8nResponse.data;
+
+    if (
+      !generatedDocument ||
+      typeof generatedDocument.text !== "string"
+    ) {
+      return res.status(500).json({
+        error: "Resposta inválida do serviço de geração (n8n).",
+        raw: generatedDocument,
+      });
+    }
 
     // --------------------------------
     // 7. Resposta final
@@ -160,7 +177,7 @@ router.post("/generate", async (req, res) => {
       document: generatedDocument,
     });
   } catch (err) {
-    console.error("Erro em /api/generate:", err);
+    console.error("Erro em /api/generate:", err?.response?.data || err);
     return res.status(500).json({
       error: "Erro interno ao gerar documento",
     });
@@ -168,4 +185,3 @@ router.post("/generate", async (req, res) => {
 });
 
 module.exports = router;
-
